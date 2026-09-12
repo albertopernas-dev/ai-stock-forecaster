@@ -121,6 +121,69 @@ def _multiple_ticker_yahoo_frame() -> pd.DataFrame:
     )
 
 
+def _staggered_listing_yahoo_frame() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            ("Open", "AAPL"): [100.0, 101.0],
+            ("Open", "META"): [float("nan"), 40.0],
+            ("High", "AAPL"): [102.0, 103.0],
+            ("High", "META"): [float("nan"), 42.0],
+            ("Low", "AAPL"): [99.0, 100.0],
+            ("Low", "META"): [float("nan"), 39.0],
+            ("Close", "AAPL"): [101.0, 102.0],
+            ("Close", "META"): [float("nan"), 41.0],
+            ("Adj Close", "AAPL"): [100.5, 101.5],
+            ("Adj Close", "META"): [float("nan"), 40.5],
+            ("Volume", "AAPL"): [1_000, 1_100],
+            ("Volume", "META"): [float("nan"), 2_000],
+        },
+        index=pd.to_datetime(["2012-05-17", "2012-05-18"]),
+    )
+
+
+def test_all_null_aligned_ticker_rows_are_removed(yfinance_module) -> None:
+    yfinance_module.download.return_value = _staggered_listing_yahoo_frame()
+    provider = YahooFinanceProvider()
+
+    result = provider.download_prices(
+        ["AAPL", "META"],
+        start="2012-05-17",
+        end="2012-05-19",
+    )
+
+    expected_observations = pd.DataFrame(
+        {
+            "date": pd.to_datetime(
+                ["2012-05-17", "2012-05-18", "2012-05-18"]
+            ),
+            "ticker": ["AAPL", "AAPL", "META"],
+        }
+    )
+    pd.testing.assert_frame_equal(
+        result[["date", "ticker"]], expected_observations
+    )
+
+
+def test_partially_null_market_observation_is_preserved(yfinance_module) -> None:
+    yahoo_frame = _staggered_listing_yahoo_frame()
+    yahoo_frame.loc[
+        pd.Timestamp("2012-05-18"), ("Adj Close", "META")
+    ] = float("nan")
+    yfinance_module.download.return_value = yahoo_frame
+    provider = YahooFinanceProvider()
+
+    result = provider.download_prices(
+        ["AAPL", "META"],
+        start="2012-05-17",
+        end="2012-05-19",
+    )
+
+    meta = result.loc[result["ticker"] == "META"].reset_index(drop=True)
+    assert meta["date"].tolist() == [pd.Timestamp("2012-05-18")]
+    assert meta["open"].tolist() == [40.0]
+    assert pd.isna(meta.loc[0, "adjusted_close"])
+
+
 def test_empty_ticker_list_is_rejected(yfinance_module) -> None:
     provider = YahooFinanceProvider()
 

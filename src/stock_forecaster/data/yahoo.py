@@ -21,6 +21,14 @@ _INTERNAL_COLUMNS = [
     "adjusted_close",
     "volume",
 ]
+_MARKET_COLUMNS = [
+    "open",
+    "high",
+    "low",
+    "close",
+    "adjusted_close",
+    "volume",
+]
 _YAHOO_COLUMN_NAMES = {
     "Open": "open",
     "High": "high",
@@ -71,6 +79,7 @@ def _normalize_ticker_frame(frame: pd.DataFrame, ticker: str) -> pd.DataFrame:
     normalized = normalized.rename(columns=_YAHOO_COLUMN_NAMES)
     normalized["date"] = pd.to_datetime(normalized["date"])
     normalized["ticker"] = ticker
+    normalized = normalized.dropna(subset=_MARKET_COLUMNS, how="all")
     return normalized[_INTERNAL_COLUMNS].sort_values(["date", "ticker"]).reset_index(
         drop=True
     )
