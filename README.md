@@ -12,26 +12,37 @@ feature, model, portfolio, backtesting, and shared utility code. Configuration,
 notebooks, datasets, trained artifacts, tests, and CI workflows are kept outside
 the importable package.
 
-The implemented market data boundary is:
+The implemented market data flow is:
 
 ```text
-Market Data Provider
+configs/market.yaml
         ↓
-Normalization
+MarketConfig
         ↓
-Internal long-format DataFrame
+YahooFinanceProvider
+        ↓
+normalized DataFrame
+        ↓
+validation
+        ↓
+MarketDataPipeline
+        ↓
+ParquetPriceStorage
+        ↓
+data/raw/prices.parquet
 ```
 
-The provider interface keeps downstream code independent of Yahoo Finance. The
-Yahoo implementation converts single- and multi-ticker downloads to the same
-internal schema.
+The first run downloads the configured history. Later runs start from the
+oldest next-required date across requested tickers, merge corrected or new
+rows, validate the result, and update Parquet storage. Numeric missing values
+are preserved rather than filled.
 
 ## Current status
 
-The project scaffold and the Yahoo Finance market data provider are in place.
-Persistence and incremental loading are not implemented yet. Feature
-engineering, machine learning, portfolio optimization, backtesting, APIs,
-deployment, and CI/CD also remain out of scope.
+The project scaffold, market configuration, Yahoo Finance provider, validation,
+Parquet persistence, and incremental update pipeline are in place. Feature
+engineering and machine learning do not exist yet. Portfolio optimization,
+backtesting, APIs, deployment, and CI/CD also remain out of scope.
 
 ## Development setup
 

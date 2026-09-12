@@ -1,0 +1,19 @@
+start_date: "2010-01-01"
+
+tickers:
+  - AAPL
+  - MSFT
+  - GOOGL
+  - AMZN
+  - META
+  - NVDA
+  - JPM
+  - V
+  - JNJ
+  - UNH
+  - XOM
+  - CVX
+  - COST
+  - WMT
+  - PG
+  - SPY

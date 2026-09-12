@@ -51,6 +51,9 @@ class YahooFinanceProvider(MarketDataProvider):
         end: str | date | datetime,
     ) -> pd.DataFrame:
         """Download and normalize daily prices for one or more tickers."""
+        if isinstance(tickers, str):
+            raise TypeError("tickers must be a sequence of strings, not a string")
+
         normalized_tickers = [ticker.upper() for ticker in tickers]
         if not normalized_tickers:
             raise ValueError("At least one ticker is required")
@@ -68,6 +71,24 @@ class YahooFinanceProvider(MarketDataProvider):
         )
         if downloaded.empty:
             raise ValueError("Yahoo Finance returned no market data")
+
+        if len(normalized_tickers) > 1 and isinstance(
+            downloaded.columns, pd.MultiIndex
+        ):
+            returned_tickers = {
+                str(ticker).upper()
+                for ticker in downloaded.columns.get_level_values(-1)
+            }
+            missing_tickers = [
+                ticker
+                for ticker in normalized_tickers
+                if ticker not in returned_tickers
+            ]
+            if missing_tickers:
+                missing_text = ", ".join(missing_tickers)
+                raise ValueError(
+                    f"Yahoo Finance returned no data for tickers: {missing_text}"
+                )
 
         if len(normalized_tickers) == 1:
             return _normalize_ticker_frame(downloaded, normalized_tickers[0])

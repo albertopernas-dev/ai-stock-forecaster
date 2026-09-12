@@ -10,6 +10,8 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "pandas",
+    "pyarrow",
+    "PyYAML",
     "yfinance",
 ]
 
@@ -24,6 +26,7 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 addopts = [
+    "--basetemp=.pytest_cache/tmp",
     "--strict-markers",
     "-ra",
 ]

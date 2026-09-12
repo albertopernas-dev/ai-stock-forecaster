@@ -51,6 +51,20 @@ def test_empty_ticker_list_is_rejected(download_mock) -> None:
 
 
 @patch("stock_forecaster.data.yahoo.yf.download")
+def test_plain_string_ticker_input_is_rejected(download_mock) -> None:
+    provider = YahooFinanceProvider()
+
+    with pytest.raises(TypeError, match="tickers must be a sequence of strings"):
+        provider.download_prices(
+            "AAPL",
+            start="2026-09-01",
+            end="2026-09-12",
+        )
+
+    download_mock.assert_not_called()
+
+
+@patch("stock_forecaster.data.yahoo.yf.download")
 def test_single_ticker_response_is_normalized(download_mock) -> None:
     download_mock.return_value = _single_ticker_yahoo_frame()
     provider = YahooFinanceProvider()
@@ -195,6 +209,22 @@ def test_empty_yahoo_response_raises_clear_error(download_mock) -> None:
     with pytest.raises(ValueError, match="Yahoo Finance returned no market data"):
         provider.download_prices(
             ["AAPL"],
+            start="2026-09-01",
+            end="2026-09-12",
+        )
+
+
+@patch("stock_forecaster.data.yahoo.yf.download")
+def test_missing_requested_ticker_is_reported_clearly(download_mock) -> None:
+    download_mock.return_value = _multiple_ticker_yahoo_frame()
+    provider = YahooFinanceProvider()
+
+    with pytest.raises(
+        ValueError,
+        match="Yahoo Finance returned no data for tickers: META",
+    ):
+        provider.download_prices(
+            ["AAPL", "MSFT", "META"],
             start="2026-09-01",
             end="2026-09-12",
         )
