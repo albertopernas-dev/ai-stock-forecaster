@@ -12,11 +12,26 @@ feature, model, portfolio, backtesting, and shared utility code. Configuration,
 notebooks, datasets, trained artifacts, tests, and CI workflows are kept outside
 the importable package.
 
+The implemented market data boundary is:
+
+```text
+Market Data Provider
+        ↓
+Normalization
+        ↓
+Internal long-format DataFrame
+```
+
+The provider interface keeps downstream code independent of Yahoo Finance. The
+Yahoo implementation converts single- and multi-ticker downloads to the same
+internal schema.
+
 ## Current status
 
-Only the initial Python project scaffold is in place. Data ingestion, feature
+The project scaffold and the Yahoo Finance market data provider are in place.
+Persistence and incremental loading are not implemented yet. Feature
 engineering, machine learning, portfolio optimization, backtesting, APIs,
-deployment, and CI/CD have not been implemented.
+deployment, and CI/CD also remain out of scope.
 
 ## Development setup
 

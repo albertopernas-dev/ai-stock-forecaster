@@ -8,7 +8,10 @@ version = "0.1.0"
 description = "Forecast five-day stock returns and evaluate portfolio strategies."
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "pandas",
+    "yfinance",
+]
 
 [project.optional-dependencies]
 dev = [
