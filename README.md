@@ -1,0 +1,36 @@
+# AI Stock Forecaster
+
+AI Stock Forecaster is an end-to-end machine learning project intended to
+forecast five-day stock returns, use those forecasts for portfolio
+optimization, backtest the resulting strategy, and expose predictions through
+an API.
+
+## High-level architecture
+
+The project uses a `src` layout with separate packages for future data,
+feature, model, portfolio, backtesting, and shared utility code. Configuration,
+notebooks, datasets, trained artifacts, tests, and CI workflows are kept outside
+the importable package.
+
+## Current status
+
+Only the initial Python project scaffold is in place. Data ingestion, feature
+engineering, machine learning, portfolio optimization, backtesting, APIs,
+deployment, and CI/CD have not been implemented.
+
+## Development setup
+
+Python 3.12 or newer is required.
+
+```bash
+python -m venv .venv
+```
+
+Activate the environment with `.venv\Scripts\Activate.ps1` in Windows
+PowerShell, or `source .venv/bin/activate` on macOS/Linux. Then run:
+
+```bash
+python -m pip install -e ".[dev]"
+python -m pytest
+python -m ruff check .
+```
