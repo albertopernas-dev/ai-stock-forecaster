@@ -60,3 +60,33 @@ python -m pip install -e ".[dev]"
 python -m pytest
 python -m ruff check .
 ```
+
+## Yahoo Finance system trust
+
+The provider uses yfinance's normal HTTP backend by default:
+
+```python
+YahooFinanceProvider(use_system_trust=False)
+```
+
+On systems where certifi does not contain a locally trusted TLS root, enable
+the operating-system certificate store instead:
+
+```python
+YahooFinanceProvider(use_system_trust=True)
+```
+
+This configures the following verified TLS path before yfinance is imported:
+
+```text
+yfinance
+    ↓
+requests fallback
+    ↓
+truststore
+    ↓
+operating-system certificate store
+```
+
+TLS verification remains enabled. The opt-in default is retained because the
+normal yfinance backend works correctly in many deployment environments.

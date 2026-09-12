@@ -1,9 +1,90 @@
-from unittest.mock import patch
+import sys
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pandas as pd
 import pytest
 
+from stock_forecaster.data import yahoo
 from stock_forecaster.data.yahoo import YahooFinanceProvider
+
+
+@pytest.fixture
+def yfinance_module(monkeypatch):
+    module = SimpleNamespace(download=Mock())
+    monkeypatch.setattr(yahoo.importlib, "import_module", lambda _: module)
+    return module
+
+
+def test_default_provider_uses_lazily_imported_yfinance(monkeypatch) -> None:
+    download_mock = Mock(return_value=_single_ticker_yahoo_frame())
+    imported_yfinance = SimpleNamespace(download=download_mock)
+    monkeypatch.setattr(
+        "stock_forecaster.data.yahoo.importlib.import_module",
+        lambda module_name: imported_yfinance,
+    )
+
+    provider = YahooFinanceProvider()
+    result = provider.download_prices(
+        ["AAPL"], start="2026-09-01", end="2026-09-12"
+    )
+
+    assert not result.empty
+    download_mock.assert_called_once()
+
+
+def test_system_trust_is_configured_before_yfinance_import(monkeypatch) -> None:
+    events = []
+    imported_yfinance = SimpleNamespace(
+        _http=SimpleNamespace(HAS_CURL_CFFI=False),
+        download=Mock(),
+    )
+    monkeypatch.delitem(sys.modules, "yfinance", raising=False)
+    monkeypatch.setattr(
+        "stock_forecaster.data.yahoo.configure_yahoo_http",
+        lambda use_system_trust: events.append(("configure", use_system_trust)),
+    )
+    monkeypatch.setattr(
+        "stock_forecaster.data.yahoo.importlib.import_module",
+        lambda module_name: events.append(("import", module_name))
+        or imported_yfinance,
+    )
+
+    YahooFinanceProvider(use_system_trust=True)
+
+    assert events == [("configure", True), ("import", "yfinance")]
+
+
+def test_system_trust_rejects_curl_cffi_after_yfinance_import(monkeypatch) -> None:
+    imported_yfinance = SimpleNamespace(
+        _http=SimpleNamespace(HAS_CURL_CFFI=True),
+        download=Mock(),
+    )
+    monkeypatch.delitem(sys.modules, "yfinance", raising=False)
+    monkeypatch.setattr(
+        "stock_forecaster.data.yahoo.configure_yahoo_http",
+        lambda use_system_trust: None,
+    )
+    monkeypatch.setattr(
+        "stock_forecaster.data.yahoo.importlib.import_module",
+        lambda module_name: imported_yfinance,
+    )
+
+    with pytest.raises(RuntimeError, match="requests fallback"):
+        YahooFinanceProvider(use_system_trust=True)
+
+
+def test_system_trust_rejects_already_loaded_curl_cffi_yfinance(
+    monkeypatch,
+) -> None:
+    loaded_yfinance = SimpleNamespace(
+        _http=SimpleNamespace(HAS_CURL_CFFI=True),
+        download=Mock(),
+    )
+    monkeypatch.setitem(sys.modules, "yfinance", loaded_yfinance)
+
+    with pytest.raises(RuntimeError, match="before yfinance is imported"):
+        YahooFinanceProvider(use_system_trust=True)
 
 
 def _single_ticker_yahoo_frame() -> pd.DataFrame:
@@ -40,18 +121,16 @@ def _multiple_ticker_yahoo_frame() -> pd.DataFrame:
     )
 
 
-@patch("stock_forecaster.data.yahoo.yf.download")
-def test_empty_ticker_list_is_rejected(download_mock) -> None:
+def test_empty_ticker_list_is_rejected(yfinance_module) -> None:
     provider = YahooFinanceProvider()
 
     with pytest.raises(ValueError, match="At least one ticker is required"):
         provider.download_prices([], start="2026-09-01", end="2026-09-12")
 
-    download_mock.assert_not_called()
+    yfinance_module.download.assert_not_called()
 
 
-@patch("stock_forecaster.data.yahoo.yf.download")
-def test_plain_string_ticker_input_is_rejected(download_mock) -> None:
+def test_plain_string_ticker_input_is_rejected(yfinance_module) -> None:
     provider = YahooFinanceProvider()
 
     with pytest.raises(TypeError, match="tickers must be a sequence of strings"):
@@ -61,12 +140,11 @@ def test_plain_string_ticker_input_is_rejected(download_mock) -> None:
             end="2026-09-12",
         )
 
-    download_mock.assert_not_called()
+    yfinance_module.download.assert_not_called()
 
 
-@patch("stock_forecaster.data.yahoo.yf.download")
-def test_single_ticker_response_is_normalized(download_mock) -> None:
-    download_mock.return_value = _single_ticker_yahoo_frame()
+def test_single_ticker_response_is_normalized(yfinance_module) -> None:
+    yfinance_module.download.return_value = _single_ticker_yahoo_frame()
     provider = YahooFinanceProvider()
 
     result = provider.download_prices(
@@ -90,9 +168,8 @@ def test_single_ticker_response_is_normalized(download_mock) -> None:
     pd.testing.assert_frame_equal(result, expected)
 
 
-@patch("stock_forecaster.data.yahoo.yf.download")
-def test_single_ticker_is_uppercased_before_download(download_mock) -> None:
-    download_mock.return_value = _single_ticker_yahoo_frame()
+def test_single_ticker_is_uppercased_before_download(yfinance_module) -> None:
+    yfinance_module.download.return_value = _single_ticker_yahoo_frame()
     provider = YahooFinanceProvider()
 
     result = provider.download_prices(
@@ -102,12 +179,11 @@ def test_single_ticker_is_uppercased_before_download(download_mock) -> None:
     )
 
     assert result["ticker"].tolist() == ["AAPL", "AAPL"]
-    assert download_mock.call_args.kwargs["tickers"] == ["AAPL"]
+    assert yfinance_module.download.call_args.kwargs["tickers"] == ["AAPL"]
 
 
-@patch("stock_forecaster.data.yahoo.yf.download")
-def test_normalized_columns_are_exact(download_mock) -> None:
-    download_mock.return_value = _single_ticker_yahoo_frame()
+def test_normalized_columns_are_exact(yfinance_module) -> None:
+    yfinance_module.download.return_value = _single_ticker_yahoo_frame()
     provider = YahooFinanceProvider()
 
     result = provider.download_prices(
@@ -128,9 +204,10 @@ def test_normalized_columns_are_exact(download_mock) -> None:
     ]
 
 
-@patch("stock_forecaster.data.yahoo.yf.download")
-def test_yfinance_download_uses_explicit_daily_price_options(download_mock) -> None:
-    download_mock.return_value = _single_ticker_yahoo_frame()
+def test_yfinance_download_uses_explicit_daily_price_options(
+    yfinance_module,
+) -> None:
+    yfinance_module.download.return_value = _single_ticker_yahoo_frame()
     provider = YahooFinanceProvider()
 
     provider.download_prices(
@@ -139,7 +216,7 @@ def test_yfinance_download_uses_explicit_daily_price_options(download_mock) -> N
         end="2026-09-12",
     )
 
-    download_mock.assert_called_once_with(
+    yfinance_module.download.assert_called_once_with(
         tickers=["AAPL"],
         start="2026-09-01",
         end="2026-09-12",
@@ -150,9 +227,10 @@ def test_yfinance_download_uses_explicit_daily_price_options(download_mock) -> N
     )
 
 
-@patch("stock_forecaster.data.yahoo.yf.download")
-def test_multiple_ticker_response_is_normalized_and_sorted(download_mock) -> None:
-    download_mock.return_value = _multiple_ticker_yahoo_frame()
+def test_multiple_ticker_response_is_normalized_and_sorted(
+    yfinance_module,
+) -> None:
+    yfinance_module.download.return_value = _multiple_ticker_yahoo_frame()
     provider = YahooFinanceProvider()
 
     result = provider.download_prices(
@@ -178,13 +256,12 @@ def test_multiple_ticker_response_is_normalized_and_sorted(download_mock) -> Non
     pd.testing.assert_frame_equal(result, expected)
 
 
-@patch("stock_forecaster.data.yahoo.yf.download")
-def test_missing_prices_are_not_forward_filled(download_mock) -> None:
+def test_missing_prices_are_not_forward_filled(yfinance_module) -> None:
     yahoo_frame = _multiple_ticker_yahoo_frame()
     yahoo_frame.loc[pd.Timestamp("2026-09-11"), ("Adj Close", "AAPL")] = float(
         "nan"
     )
-    download_mock.return_value = yahoo_frame
+    yfinance_module.download.return_value = yahoo_frame
     provider = YahooFinanceProvider()
 
     result = provider.download_prices(
@@ -201,9 +278,8 @@ def test_missing_prices_are_not_forward_filled(download_mock) -> None:
     assert pd.isna(aapl_missing_value)
 
 
-@patch("stock_forecaster.data.yahoo.yf.download")
-def test_empty_yahoo_response_raises_clear_error(download_mock) -> None:
-    download_mock.return_value = pd.DataFrame()
+def test_empty_yahoo_response_raises_clear_error(yfinance_module) -> None:
+    yfinance_module.download.return_value = pd.DataFrame()
     provider = YahooFinanceProvider()
 
     with pytest.raises(ValueError, match="Yahoo Finance returned no market data"):
@@ -214,9 +290,8 @@ def test_empty_yahoo_response_raises_clear_error(download_mock) -> None:
         )
 
 
-@patch("stock_forecaster.data.yahoo.yf.download")
-def test_missing_requested_ticker_is_reported_clearly(download_mock) -> None:
-    download_mock.return_value = _multiple_ticker_yahoo_frame()
+def test_missing_requested_ticker_is_reported_clearly(yfinance_module) -> None:
+    yfinance_module.download.return_value = _multiple_ticker_yahoo_frame()
     provider = YahooFinanceProvider()
 
     with pytest.raises(
@@ -230,9 +305,8 @@ def test_missing_requested_ticker_is_reported_clearly(download_mock) -> None:
         )
 
 
-@patch("stock_forecaster.data.yahoo.yf.download")
 def test_duplicate_tickers_after_uppercase_normalization_are_rejected(
-    download_mock,
+    yfinance_module,
 ) -> None:
     provider = YahooFinanceProvider()
 
@@ -243,4 +317,4 @@ def test_duplicate_tickers_after_uppercase_normalization_are_rejected(
             end="2026-09-12",
         )
 
-    download_mock.assert_not_called()
+    yfinance_module.download.assert_not_called()
