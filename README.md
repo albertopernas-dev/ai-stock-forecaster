@@ -32,6 +32,20 @@ ParquetPriceStorage
 data/raw/prices.parquet
 ```
 
+The next implemented transformation is:
+
+```text
+RAW prices
+    ↓
+Core feature engineering
+    ↓
+Features + future_return_5d
+```
+
+Predictor features use only the current and previous trading observations.
+The `future_return_5d` target uses the price five trading observations ahead.
+Processed-data persistence and model training are not implemented yet.
+
 The first run downloads the configured history. Later runs start from the
 oldest next-required date across requested tickers, merge corrected or new
 rows, validate the result, and update Parquet storage. Numeric missing values
@@ -40,9 +54,10 @@ are preserved rather than filled.
 ## Current status
 
 The project scaffold, market configuration, Yahoo Finance provider, validation,
-Parquet persistence, and incremental update pipeline are in place. Feature
-engineering and machine learning do not exist yet. Portfolio optimization,
-backtesting, APIs, deployment, and CI/CD also remain out of scope.
+Parquet persistence, incremental update pipeline, and pure core feature
+engineering are in place. Processed feature persistence and machine learning do
+not exist yet. Portfolio optimization, backtesting, APIs, deployment, and CI/CD
+also remain out of scope.
 
 ## Development setup
 
