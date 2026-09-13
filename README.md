@@ -63,6 +63,24 @@ horizon reaches into the next period, preventing future information from
 crossing a split boundary. The horizon date is never included as a model
 feature.
 
+The model-evaluation progression is:
+
+```text
+Supervised temporal split
+        ↓
+Simple baselines
+        ↓
+Common metrics
+        ↓
+Future ML models
+```
+
+The global Mean Baseline always predicts the TRAIN target mean. The Momentum
+Baseline predicts the future five-day return using the current `return_5d`
+feature. Both use the same MAE, RMSE, directional accuracy, and Pearson
+correlation metrics. TEST is held out and is not used for baseline comparison
+or model selection.
+
 The first run downloads the configured history. Later runs start from the
 oldest next-required date across requested tickers, merge corrected or new
 rows, validate the result, and update Parquet storage. Numeric missing values
@@ -73,9 +91,10 @@ are preserved rather than filled.
 The project scaffold, market configuration, Yahoo Finance provider, validation,
 Parquet persistence, incremental update pipeline, and pure core feature
 engineering are in place. Leakage-safe supervised dataset preparation and
-chronological train/validation/test splitting are also implemented. Model
-training, portfolio optimization, backtesting, APIs, deployment, and CI/CD
-remain out of scope.
+chronological train/validation/test splitting are also implemented, along with
+two simple forecasting baselines and common regression metrics. Trainable ML
+models, portfolio optimization, backtesting, APIs, deployment, and CI/CD remain
+out of scope.
 
 ## Development setup
 
