@@ -40,11 +40,28 @@ RAW prices
 Core feature engineering
     ↓
 Features + future_return_5d
+    ↓
+Complete supervised rows
+    ↓
+Leakage-safe temporal split
+    ↓
+TRAIN / VALIDATION / TEST
 ```
 
 Predictor features use only the current and previous trading observations.
 The `future_return_5d` target uses the price five trading observations ahead.
-Processed-data persistence and model training are not implemented yet.
+Supervised rows keep predictors, the target, and identifying metadata separate.
+The initial chronological boundaries are:
+
+- TRAIN: through 2021-12-31
+- VALIDATION: 2022-01-01 through 2023-12-31
+- TEST: from 2024-01-01
+
+Each supervised row records the trading date five ticker observations ahead as
+internal split metadata. A train or validation row is removed when that target
+horizon reaches into the next period, preventing future information from
+crossing a split boundary. The horizon date is never included as a model
+feature.
 
 The first run downloads the configured history. Later runs start from the
 oldest next-required date across requested tickers, merge corrected or new
@@ -55,9 +72,10 @@ are preserved rather than filled.
 
 The project scaffold, market configuration, Yahoo Finance provider, validation,
 Parquet persistence, incremental update pipeline, and pure core feature
-engineering are in place. Processed feature persistence and machine learning do
-not exist yet. Portfolio optimization, backtesting, APIs, deployment, and CI/CD
-also remain out of scope.
+engineering are in place. Leakage-safe supervised dataset preparation and
+chronological train/validation/test splitting are also implemented. Model
+training, portfolio optimization, backtesting, APIs, deployment, and CI/CD
+remain out of scope.
 
 ## Development setup
 
