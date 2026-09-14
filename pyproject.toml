@@ -12,6 +12,7 @@ dependencies = [
     "pandas",
     "pyarrow",
     "PyYAML",
+    "scikit-learn",
     "truststore",
     "yfinance",
 ]

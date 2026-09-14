@@ -70,9 +70,9 @@ Supervised temporal split
         ↓
 Simple baselines
         ↓
-Common metrics
+Global standardized linear regression
         ↓
-Future ML models
+Future nonlinear models
 ```
 
 The global Mean Baseline always predicts the TRAIN target mean. The Momentum
@@ -80,6 +80,13 @@ Baseline predicts the future five-day return using the current `return_5d`
 feature. Both use the same MAE, RMSE, directional accuracy, and Pearson
 correlation metrics. TEST is held out and is not used for baseline comparison
 or model selection.
+
+The first trainable model is one global linear regression over 15 stocks.
+SPY remains available as a benchmark but is excluded from model fitting and
+validation comparison. The model consumes exactly the ten engineered
+`FEATURE_COLUMNS` and does not encode ticker metadata. A single sklearn
+pipeline fits `StandardScaler` and `LinearRegression` on TRAIN only. Model
+comparison uses VALIDATION only; TEST remains untouched.
 
 The first run downloads the configured history. Later runs start from the
 oldest next-required date across requested tickers, merge corrected or new
@@ -92,9 +99,9 @@ The project scaffold, market configuration, Yahoo Finance provider, validation,
 Parquet persistence, incremental update pipeline, and pure core feature
 engineering are in place. Leakage-safe supervised dataset preparation and
 chronological train/validation/test splitting are also implemented, along with
-two simple forecasting baselines and common regression metrics. Trainable ML
-models, portfolio optimization, backtesting, APIs, deployment, and CI/CD remain
-out of scope.
+two simple forecasting baselines, common regression metrics, and a standardized
+linear regression forecaster. Nonlinear models, portfolio optimization,
+backtesting, APIs, deployment, and CI/CD remain out of scope.
 
 ## Development setup
 
