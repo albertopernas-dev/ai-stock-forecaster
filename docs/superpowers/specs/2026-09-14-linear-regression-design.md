@@ -65,6 +65,12 @@ select or reorder columns. This strict contract prevents accidental inclusion
 of `date`, `ticker`, `target_end_date`, or `future_return_5d` in `X` and keeps
 coefficient labels deterministic.
 
+Every column in `X` and the target `y` must use a numeric pandas dtype. Integer
+and floating-point numeric dtypes are accepted; the contract does not require
+one exact dtype such as `float64`. A non-numeric feature column or non-numeric
+target raises a clear `ValueError` before sklearn is called. Numeric inputs must
+also satisfy the existing null and positive/negative infinity checks.
+
 ## Pipeline and leakage controls
 
 The implementation uses one `sklearn.pipeline.Pipeline`:
@@ -103,12 +109,19 @@ Contract:
 - `fit` returns `self`.
 - `predict` before a successful fit raises a clear error.
 - `X` must have exactly `FEATURE_COLUMNS` in their declared order.
-- Fit rejects unequal `X`/`y` lengths and non-identical indices.
+- Fit requires both equal `X`/`y` lengths and `X.index.equals(y.index)`. Equal
+  lengths are insufficient when index values or index ordering differ; that
+  mismatch raises a clear `ValueError`.
+- Fit does not sort, reset, reindex, or otherwise realign `X` and `y`. The caller
+  supplies already aligned training data.
+- Every feature column and `y` must have a numeric pandas dtype; integer and
+  floating-point dtypes are both valid.
 - Fit rejects null or infinite values in either `X` or `y`.
 - Predict rejects null or infinite values in `X`.
 - Fit and predict do not mutate caller-owned DataFrames or Series.
-- Predict returns a `pd.Series` named `prediction`, preserving the input row
-  order and index exactly.
+- Predict returns a `pd.Series` with `name == "prediction"` and
+  `predictions.index.equals(X.index)`.
+- Predict does not reset, sort, or otherwise alter prediction row alignment.
 - The class wraps only the approved pipeline and does not introduce an abstract
   estimator hierarchy.
 
@@ -171,10 +184,16 @@ production code and cover:
 - predict before fit;
 - exact ordered `FEATURE_COLUMNS` acceptance;
 - missing, extra, and reordered feature rejection;
+- one non-numeric feature column rejected before sklearn;
+- non-numeric `y` rejected before sklearn;
 - null and positive/negative infinity rejection in applicable `X` and `y`;
-- `X`/`y` length and index mismatch rejection;
+- unequal `X`/`y` length rejection;
+- equal-length `X` and `y` with different index values or index ordering
+  rejected clearly;
 - no input mutation during fit or prediction;
-- exact prediction index and row alignment;
+- prediction output is a `pd.Series` with `name == "prediction"`;
+- prediction output satisfies `predictions.index.equals(X.index)` without
+  sorting or resetting;
 - `coefficients_` indexed in `FEATURE_COLUMNS` order;
 - a finite `intercept_`;
 - recovery of predictions from a known deterministic linear relationship;
