@@ -16,6 +16,9 @@ htmlcov/
 .tox/
 .nox/
 
+# Local isolated development worktrees
+/.worktrees/
+
 # Virtual environments
 .venv/
 venv/
