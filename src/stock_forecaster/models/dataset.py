@@ -1,5 +1,6 @@
 """Leakage-safe supervised dataset preparation and temporal splitting."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 
@@ -33,6 +34,15 @@ class TemporalDatasetSplit:
     train: DatasetPartition
     validation: DatasetPartition
     test: DatasetPartition
+
+
+@dataclass(frozen=True)
+class WalkForwardFold:
+    """One annual validation fold with all prior observations as training data."""
+
+    validation_year: int
+    train: DatasetPartition
+    validation: DatasetPartition
 
 
 def _require_columns(frame: pd.DataFrame, required: tuple[str, ...]) -> None:
@@ -125,3 +135,48 @@ def temporal_split(
         validation=_partition(validation_rows, "VALIDATION"),
         test=_partition(test_rows, "TEST"),
     )
+
+
+def walk_forward_splits(
+    supervised_data: pd.DataFrame,
+    validation_years: Sequence[int],
+) -> tuple[WalkForwardFold, ...]:
+    """Build annual walk-forward train and validation partitions."""
+    years = tuple(validation_years)
+    if not years:
+        raise ValueError("validation_years must not be empty")
+    if any(type(year) is not int for year in years):
+        raise ValueError("validation_years must contain only integers")
+    if len(set(years)) != len(years):
+        raise ValueError("validation_years must be unique")
+    if any(left >= right for left, right in zip(years, years[1:])):
+        raise ValueError("validation_years must be strictly increasing")
+    _require_columns(supervised_data, _SUPERVISED_COLUMNS)
+    ordered = supervised_data.loc[:, _SUPERVISED_COLUMNS].copy()
+    ordered["date"] = pd.to_datetime(ordered["date"])
+    ordered["target_end_date"] = pd.to_datetime(ordered["target_end_date"])
+    _reject_duplicate_keys(ordered)
+
+    folds = []
+    for year in years:
+        validation_start = pd.Timestamp(year=year, month=1, day=1)
+        next_year_start = pd.Timestamp(year=year + 1, month=1, day=1)
+        train_rows = ordered.loc[
+            ordered["date"].lt(validation_start)
+            & ordered["target_end_date"].lt(validation_start)
+        ]
+        validation_rows = ordered.loc[
+            (ordered["date"] >= validation_start)
+            & (ordered["date"] < next_year_start)
+            & ordered["target_end_date"].lt(next_year_start)
+        ]
+        folds.append(
+            WalkForwardFold(
+                validation_year=year,
+                train=_partition(train_rows, f"TRAIN {year}"),
+                validation=_partition(
+                    validation_rows, f"VALIDATION {year}"
+                ),
+            )
+        )
+    return tuple(folds)

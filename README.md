@@ -66,15 +66,13 @@ feature.
 The model-evaluation progression is:
 
 ```text
-Supervised temporal split
+Single temporal validation split
         ↓
-Mean / Momentum baselines
+Annual expanding walk-forward validation (2016-2023)
         ↓
-Global standardized linear regression
+Pooled out-of-sample model comparison
         ↓
-Fixed global Random Forest
-        ↓
-Future models
+Future modeling decisions
 ```
 
 The global Mean Baseline always predicts the TRAIN target mean. The Momentum
@@ -97,6 +95,13 @@ features directly, without feature scaling, fits on TRAIN only, and is
 compared with freshly fitted baselines and linear regression on VALIDATION.
 TEST remains untouched.
 
+Model stability is evaluated with annual 2016-2023 validation folds and an
+expanding TRAIN window. TRAIN and each annual VALIDATION partition are purged
+using the ticker-specific `target_end_date`. The four existing models produce
+in-memory out-of-sample predictions; pooled metrics are recomputed from their
+concatenated prediction rows rather than averaged across years. TEST remains
+2024+ and untouched.
+
 The first run downloads the configured history. Later runs start from the
 oldest next-required date across requested tickers, merge corrected or new
 rows, validate the result, and update Parquet storage. Numeric missing values
@@ -111,6 +116,9 @@ chronological train/validation/test splitting are also implemented, along with
 two simple forecasting baselines, common regression metrics, and a standardized
 linear regression forecaster, and a fixed Random Forest forecaster. Portfolio
 optimization, backtesting, APIs, deployment, and CI/CD remain out of scope.
+Expanding annual walk-forward validation and pooled out-of-sample evaluation
+infrastructure are also in place; numerical Step 5E results are deferred to
+the real evaluation.
 
 ## Development setup
 
