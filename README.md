@@ -68,11 +68,13 @@ The model-evaluation progression is:
 ```text
 Supervised temporal split
         ↓
-Simple baselines
+Mean / Momentum baselines
         ↓
 Global standardized linear regression
         ↓
-Future nonlinear models
+Fixed global Random Forest
+        ↓
+Future models
 ```
 
 The global Mean Baseline always predicts the TRAIN target mean. The Momentum
@@ -88,6 +90,13 @@ validation comparison. The model consumes exactly the ten engineered
 pipeline fits `StandardScaler` and `LinearRegression` on TRAIN only. Model
 comparison uses VALIDATION only; TEST remains untouched.
 
+The first nonlinear benchmark is one fixed Random Forest across the same
+15-stock universe. SPY remains the persisted benchmark and is excluded only
+in modeling orchestration. The forest consumes the same ten engineered
+features directly, without feature scaling, fits on TRAIN only, and is
+compared with freshly fitted baselines and linear regression on VALIDATION.
+TEST remains untouched.
+
 The first run downloads the configured history. Later runs start from the
 oldest next-required date across requested tickers, merge corrected or new
 rows, validate the result, and update Parquet storage. Numeric missing values
@@ -100,8 +109,8 @@ Parquet persistence, incremental update pipeline, and pure core feature
 engineering are in place. Leakage-safe supervised dataset preparation and
 chronological train/validation/test splitting are also implemented, along with
 two simple forecasting baselines, common regression metrics, and a standardized
-linear regression forecaster. Nonlinear models, portfolio optimization,
-backtesting, APIs, deployment, and CI/CD remain out of scope.
+linear regression forecaster, and a fixed Random Forest forecaster. Portfolio
+optimization, backtesting, APIs, deployment, and CI/CD remain out of scope.
 
 ## Development setup
 
