@@ -1,6 +1,7 @@
 import pandas as pd
 import pytest
 
+import stock_forecaster.models.baseline as baseline_module
 from stock_forecaster.models.baseline import MeanBaseline, MomentumBaseline
 
 
@@ -87,3 +88,21 @@ def test_momentum_baseline_rejects_missing_return_5d():
 
     with pytest.raises(ValueError, match="Missing required feature: return_5d"):
         MomentumBaseline().predict(X)
+
+
+def test_zero_baseline_returns_float_zeros_without_mutating_features():
+    index = pd.Index([9, 3, 12], name="validation_row")
+    X = pd.DataFrame(
+        {
+            "return_5d": [0.05, -0.02, 0.0],
+            "unrelated": ["first", "second", "third"],
+        },
+        index=index,
+    )
+    original = X.copy(deep=True)
+
+    predictions = baseline_module.ZeroBaseline().predict(X)
+
+    expected = pd.Series([0.0, 0.0, 0.0], index=index, name="prediction", dtype=float)
+    pd.testing.assert_series_equal(predictions, expected)
+    pd.testing.assert_frame_equal(X, original)

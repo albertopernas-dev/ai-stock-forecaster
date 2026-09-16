@@ -3,6 +3,14 @@
 import pandas as pd
 
 
+class ZeroBaseline:
+    """Predict zero excess return for every validation row."""
+
+    def predict(self, X: pd.DataFrame) -> pd.Series:
+        """Return float zero predictions aligned with the feature rows."""
+        return pd.Series(0.0, index=X.index, name="prediction", dtype=float)
+
+
 class MeanBaseline:
     """Predict the global mean learned from training targets."""
 

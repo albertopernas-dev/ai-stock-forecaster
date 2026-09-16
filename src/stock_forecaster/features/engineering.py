@@ -15,9 +15,12 @@ FEATURE_COLUMNS = (
     "volume_ratio_20",
 )
 TARGET_COLUMN = "future_return_5d"
+EXCESS_TARGET_COLUMN = "future_excess_return_5d"
 
 _REQUIRED_COLUMNS = ("date", "ticker", "adjusted_close", "volume")
-_OUTPUT_COLUMNS = ("date", "ticker", *FEATURE_COLUMNS, TARGET_COLUMN)
+_OUTPUT_COLUMNS = (
+    "date", "ticker", *FEATURE_COLUMNS, TARGET_COLUMN, EXCESS_TARGET_COLUMN
+)
 
 
 def _relative_change(
@@ -87,6 +90,19 @@ def build_features(prices: pd.DataFrame) -> pd.DataFrame:
     )
     result["volume_ratio_20"] = _relative_change(volume, volume_average)
     result[TARGET_COLUMN] = _relative_change(price_groups.shift(-5), price)
+
+    target_end_dates = ordered["date"].groupby(ticker, sort=False).shift(-5)
+    spy_prices = (
+        ordered.loc[ordered["ticker"].eq("SPY"), ["date", "adjusted_close"]]
+        .set_index("date")["adjusted_close"]
+    )
+    spy_start = ordered["date"].map(spy_prices)
+    spy_end = target_end_dates.map(spy_prices)
+    spy_return = _relative_change(spy_end, spy_start)
+    excess_target = result[TARGET_COLUMN] - spy_return
+    result[EXCESS_TARGET_COLUMN] = excess_target.where(
+        ~excess_target.isin([float("inf"), float("-inf")])
+    )
 
     return (
         result.loc[:, _OUTPUT_COLUMNS]

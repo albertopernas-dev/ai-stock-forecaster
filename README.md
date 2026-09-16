@@ -49,7 +49,20 @@ TRAIN / VALIDATION / TEST
 ```
 
 Predictor features use only the current and previous trading observations.
-The `future_return_5d` target uses the price five trading observations ahead.
+The original `future_return_5d` target uses the price five trading observations
+ahead; it remains supported and is the default target. The optional
+`future_excess_return_5d` target is the stock's `future_return_5d` minus SPY's
+adjusted-close return over the exact same window: the stock row date to that
+stock's own fifth future trading date. SPY values are looked up at those two
+exact dates, not by SPY's fifth observation. Missing exact SPY start or end
+points are never imputed, so the excess target is null for that row.
+
+Target selection is explicit when preparing supervised data. Omitting the
+selection preserves the absolute-return default, which keeps the established
+Step 5E target and default model behavior reproducible. SPY remains available
+to construct the excess target, but is excluded from `X` and from the modeled
+stock universe.
+
 Supervised rows keep predictors, the target, and identifying metadata separate.
 The initial chronological boundaries are:
 
@@ -78,8 +91,16 @@ Future modeling decisions
 The global Mean Baseline always predicts the TRAIN target mean. The Momentum
 Baseline predicts the future five-day return using the current `return_5d`
 feature. Both use the same MAE, RMSE, directional accuracy, and Pearson
-correlation metrics. TEST is held out and is not used for baseline comparison
-or model selection.
+correlation metrics. For the excess-return target, ZeroBaseline predicts zero
+excess return and is the natural MAE/RMSE reference. Its constant predictions
+make Pearson correlation expected to be `NaN`. The existing directional metric
+treats zero as its own sign, so ZeroBaseline earns directional credit only on
+rows whose target is exactly zero; when exact-zero targets are rare its
+directional accuracy approaches zero. That number must therefore not be read
+like the directional accuracy of a conventional variable predictor, and other
+models beating it on direction is not by itself evidence of directional
+forecasting skill. TEST is held out and is not used for baseline comparison or
+model selection.
 
 The first trainable model is one global linear regression over 15 stocks.
 SPY remains available as a benchmark but is excluded from model fitting and
@@ -97,10 +118,12 @@ TEST remains untouched.
 
 Model stability is evaluated with annual 2016-2023 validation folds and an
 expanding TRAIN window. TRAIN and each annual VALIDATION partition are purged
-using the ticker-specific `target_end_date`. The four existing models produce
-in-memory out-of-sample predictions; pooled metrics are recomputed from their
-concatenated prediction rows rather than averaged across years. TEST remains
-2024+ and untouched.
+using the ticker-specific `target_end_date`. For the official Step 5F
+evaluation, the model set is exactly ZeroBaseline, MeanBaseline,
+LinearRegression, and RandomForest. Momentum remains supported but is excluded
+from that official Step 5F set. The models produce in-memory out-of-sample
+predictions; pooled metrics are recomputed from their concatenated prediction
+rows rather than averaged across years. TEST remains 2024+ and untouched.
 
 The first run downloads the configured history. Later runs start from the
 oldest next-required date across requested tickers, merge corrected or new
@@ -117,8 +140,9 @@ two simple forecasting baselines, common regression metrics, and a standardized
 linear regression forecaster, and a fixed Random Forest forecaster. Portfolio
 optimization, backtesting, APIs, deployment, and CI/CD remain out of scope.
 Expanding annual walk-forward validation and pooled out-of-sample evaluation
-infrastructure are also in place; numerical Step 5E results are deferred to
-the real evaluation.
+infrastructure are also in place. Controlled target migration and evaluation
+are pending; numerical Step 5E and Step 5F results are deferred to the real
+evaluation.
 
 ## Development setup
 

@@ -3,7 +3,11 @@ from dataclasses import FrozenInstanceError
 import pandas as pd
 import pytest
 
-from stock_forecaster.features.engineering import FEATURE_COLUMNS, TARGET_COLUMN
+from stock_forecaster.features.engineering import (
+    EXCESS_TARGET_COLUMN,
+    FEATURE_COLUMNS,
+    TARGET_COLUMN,
+)
 from stock_forecaster.models.dataset import (
     DatasetPartition,
     WalkForwardFold,
@@ -85,6 +89,23 @@ def test_walk_forward_splits_builds_chronological_annual_folds_and_partitions():
                 assert partition.y.loc[index] == source_row[TARGET_COLUMN]
 
 
+def test_walk_forward_splits_use_the_only_approved_target_for_every_y():
+    supervised = _supervised_rows()
+    supervised[EXCESS_TARGET_COLUMN] = supervised[TARGET_COLUMN] + 0.5
+    supervised = supervised.drop(columns=[TARGET_COLUMN])
+    folds = walk_forward_splits(supervised, (2016, 2017))
+
+    for fold in folds:
+        for partition in (fold.train, fold.validation):
+            assert partition.y.name == EXCESS_TARGET_COLUMN
+            source = supervised.set_index(["date", "ticker"])
+            expected = [
+                source.loc[(row.date, row.ticker), EXCESS_TARGET_COLUMN]
+                for row in partition.metadata.itertuples()
+            ]
+            assert partition.y.tolist() == expected
+
+
 def test_walk_forward_folds_are_frozen_and_do_not_mutate_supervised_input():
     supervised = _supervised_rows()
     original = supervised.copy(deep=True)
@@ -97,8 +118,14 @@ def test_walk_forward_folds_are_frozen_and_do_not_mutate_supervised_input():
     pd.testing.assert_frame_equal(supervised, original)
 
 
-def test_train_and_validation_use_actual_target_end_date_for_purging():
+@pytest.mark.parametrize("target_column", [TARGET_COLUMN, EXCESS_TARGET_COLUMN])
+def test_train_and_validation_use_actual_target_end_date_for_purging(
+    target_column,
+):
     supervised = _supervised_rows(years=range(2015, 2017), tickers=("AAA",))
+    if target_column == EXCESS_TARGET_COLUMN:
+        supervised[EXCESS_TARGET_COLUMN] = supervised[TARGET_COLUMN] + 0.5
+        supervised = supervised.drop(columns=[TARGET_COLUMN])
     crossing_train = supervised.iloc[[0]].copy()
     crossing_train.loc[:, "date"] = pd.Timestamp("2015-12-28")
     crossing_train.loc[:, "target_end_date"] = pd.Timestamp("2016-01-04")

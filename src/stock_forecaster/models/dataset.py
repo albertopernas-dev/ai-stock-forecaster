@@ -6,16 +6,13 @@ from datetime import date, datetime
 
 import pandas as pd
 
-from stock_forecaster.features.engineering import FEATURE_COLUMNS, TARGET_COLUMN
-
-_INPUT_COLUMNS = ("date", "ticker", *FEATURE_COLUMNS, TARGET_COLUMN)
-_SUPERVISED_COLUMNS = (
-    "date",
-    "ticker",
-    "target_end_date",
-    *FEATURE_COLUMNS,
+from stock_forecaster.features.engineering import (
+    EXCESS_TARGET_COLUMN,
+    FEATURE_COLUMNS,
     TARGET_COLUMN,
 )
+
+_APPROVED_TARGET_COLUMNS = (TARGET_COLUMN, EXCESS_TARGET_COLUMN)
 
 
 @dataclass(frozen=True)
@@ -51,15 +48,56 @@ def _require_columns(frame: pd.DataFrame, required: tuple[str, ...]) -> None:
         raise ValueError(f"Missing required columns: {', '.join(missing_columns)}")
 
 
+def _validate_target_column(target_column: str) -> None:
+    if target_column not in _APPROVED_TARGET_COLUMNS:
+        allowed = ", ".join(_APPROVED_TARGET_COLUMNS)
+        raise ValueError(
+            f"Unsupported target column {target_column!r}; expected one of: {allowed}"
+        )
+
+
+def _input_columns(target_column: str) -> tuple[str, ...]:
+    return ("date", "ticker", *FEATURE_COLUMNS, target_column)
+
+
+def _supervised_columns(target_column: str) -> tuple[str, ...]:
+    return (
+        "date",
+        "ticker",
+        "target_end_date",
+        *FEATURE_COLUMNS,
+        target_column,
+    )
+
+
+def _infer_target_column(frame: pd.DataFrame) -> str:
+    present = tuple(
+        target
+        for target in _APPROVED_TARGET_COLUMNS
+        if target in frame.columns
+    )
+    if len(present) != 1:
+        raise ValueError(
+            "Prepared data must contain exactly one approved target column"
+        )
+    return present[0]
+
+
 def _reject_duplicate_keys(frame: pd.DataFrame) -> None:
     if frame.duplicated(subset=["date", "ticker"]).any():
         raise ValueError("Duplicate date and ticker rows")
 
 
-def prepare_supervised_data(features: pd.DataFrame) -> pd.DataFrame:
+def prepare_supervised_data(
+    features: pd.DataFrame,
+    target_column: str = TARGET_COLUMN,
+) -> pd.DataFrame:
     """Return complete supervised rows with ticker-local target horizon dates."""
-    _require_columns(features, _INPUT_COLUMNS)
-    ordered = features.loc[:, _INPUT_COLUMNS].copy()
+    _validate_target_column(target_column)
+    input_columns = _input_columns(target_column)
+    supervised_columns = _supervised_columns(target_column)
+    _require_columns(features, input_columns)
+    ordered = features.loc[:, input_columns].copy()
     ordered["date"] = pd.to_datetime(ordered["date"])
     _reject_duplicate_keys(ordered)
     ordered = ordered.sort_values(["ticker", "date"]).reset_index(drop=True)
@@ -67,23 +105,27 @@ def prepare_supervised_data(features: pd.DataFrame) -> pd.DataFrame:
         "date"
     ].shift(-5)
 
-    complete_columns = [*FEATURE_COLUMNS, TARGET_COLUMN, "target_end_date"]
+    complete_columns = [*FEATURE_COLUMNS, target_column, "target_end_date"]
     complete = ordered.dropna(subset=complete_columns)
     return (
-        complete.loc[:, _SUPERVISED_COLUMNS]
+        complete.loc[:, supervised_columns]
         .sort_values(["date", "ticker"])
         .reset_index(drop=True)
     )
 
 
-def _partition(rows: pd.DataFrame, name: str) -> DatasetPartition:
+def _partition(
+    rows: pd.DataFrame,
+    name: str,
+    target_column: str,
+) -> DatasetPartition:
     if rows.empty:
         raise ValueError(f"{name} partition is empty")
 
     ordered = rows.sort_values(["date", "ticker"]).reset_index(drop=True)
     return DatasetPartition(
         X=ordered.loc[:, FEATURE_COLUMNS].copy(),
-        y=ordered.loc[:, TARGET_COLUMN].copy(),
+        y=ordered.loc[:, target_column].copy(),
         metadata=ordered.loc[:, ["date", "ticker"]].copy(),
     )
 
@@ -111,8 +153,10 @@ def temporal_split(
     if validation_end_timestamp >= test_start_timestamp:
         raise ValueError("validation_end must be earlier than test_start")
 
-    _require_columns(supervised, _SUPERVISED_COLUMNS)
-    ordered = supervised.loc[:, _SUPERVISED_COLUMNS].copy()
+    target_column = _infer_target_column(supervised)
+    supervised_columns = _supervised_columns(target_column)
+    _require_columns(supervised, supervised_columns)
+    ordered = supervised.loc[:, supervised_columns].copy()
     ordered["date"] = pd.to_datetime(ordered["date"])
     ordered["target_end_date"] = pd.to_datetime(ordered["target_end_date"])
     _reject_duplicate_keys(ordered)
@@ -131,9 +175,9 @@ def temporal_split(
     test_rows = ordered.loc[ordered["date"] >= test_start_timestamp]
 
     return TemporalDatasetSplit(
-        train=_partition(train_rows, "TRAIN"),
-        validation=_partition(validation_rows, "VALIDATION"),
-        test=_partition(test_rows, "TEST"),
+        train=_partition(train_rows, "TRAIN", target_column),
+        validation=_partition(validation_rows, "VALIDATION", target_column),
+        test=_partition(test_rows, "TEST", target_column),
     )
 
 
@@ -151,8 +195,10 @@ def walk_forward_splits(
         raise ValueError("validation_years must be unique")
     if any(left >= right for left, right in zip(years, years[1:])):
         raise ValueError("validation_years must be strictly increasing")
-    _require_columns(supervised_data, _SUPERVISED_COLUMNS)
-    ordered = supervised_data.loc[:, _SUPERVISED_COLUMNS].copy()
+    target_column = _infer_target_column(supervised_data)
+    supervised_columns = _supervised_columns(target_column)
+    _require_columns(supervised_data, supervised_columns)
+    ordered = supervised_data.loc[:, supervised_columns].copy()
     ordered["date"] = pd.to_datetime(ordered["date"])
     ordered["target_end_date"] = pd.to_datetime(ordered["target_end_date"])
     _reject_duplicate_keys(ordered)
@@ -173,9 +219,9 @@ def walk_forward_splits(
         folds.append(
             WalkForwardFold(
                 validation_year=year,
-                train=_partition(train_rows, f"TRAIN {year}"),
+                train=_partition(train_rows, f"TRAIN {year}", target_column),
                 validation=_partition(
-                    validation_rows, f"VALIDATION {year}"
+                    validation_rows, f"VALIDATION {year}", target_column
                 ),
             )
         )

@@ -4,12 +4,17 @@ from datetime import date, datetime
 import pandas as pd
 import pytest
 
-from stock_forecaster.features.engineering import FEATURE_COLUMNS, TARGET_COLUMN
+from stock_forecaster.features.engineering import (
+    EXCESS_TARGET_COLUMN,
+    FEATURE_COLUMNS,
+    TARGET_COLUMN,
+)
 from stock_forecaster.models.dataset import (
     DatasetPartition,
     TemporalDatasetSplit,
     prepare_supervised_data,
     temporal_split,
+    walk_forward_splits,
 )
 
 
@@ -71,6 +76,12 @@ def _boundary_dates() -> list[str]:
     ]
 
 
+def _with_excess_target(frame: pd.DataFrame) -> pd.DataFrame:
+    result = frame.copy()
+    result[EXCESS_TARGET_COLUMN] = result[TARGET_COLUMN] + 0.25
+    return result
+
+
 def _prepared_boundary_data() -> pd.DataFrame:
     return prepare_supervised_data(_processed_rows({"AAA": _boundary_dates()}))
 
@@ -97,6 +108,109 @@ def test_missing_required_columns_are_listed_clearly():
     assert "ticker" in message
     assert "volatility_20d" in message
     assert TARGET_COLUMN in message
+
+
+def test_default_target_and_explicit_old_target_are_frame_equal():
+    frame = _with_excess_target(_processed_rows({"AAA": _boundary_dates()}))
+
+    pd.testing.assert_frame_equal(
+        prepare_supervised_data(frame),
+        prepare_supervised_data(frame, target_column=TARGET_COLUMN),
+    )
+
+
+def test_explicit_excess_target_prepares_only_selected_target():
+    frame = _with_excess_target(_processed_rows({"AAA": _boundary_dates()}))
+
+    result = prepare_supervised_data(frame, target_column=EXCESS_TARGET_COLUMN)
+
+    assert list(result.columns) == [
+        "date",
+        "ticker",
+        "target_end_date",
+        *FEATURE_COLUMNS,
+        EXCESS_TARGET_COLUMN,
+    ]
+    assert TARGET_COLUMN not in result.columns
+    source = frame.set_index(["date", "ticker"])[EXCESS_TARGET_COLUMN]
+    expected = [
+        source.loc[(row.date, row.ticker)]
+        for row in result[["date", "ticker"]].itertuples()
+    ]
+    assert result[EXCESS_TARGET_COLUMN].tolist() == expected
+
+
+def test_unknown_target_is_rejected_before_row_preparation():
+    frame = _processed_rows({"AAA": _boundary_dates()})
+
+    with pytest.raises(ValueError, match="Unsupported target column"):
+        prepare_supervised_data(frame, target_column="arbitrary_target")
+
+
+def test_selected_target_null_is_excluded_but_unselected_target_null_is_irrelevant():
+    frame = _with_excess_target(
+        _processed_rows({"AAA": pd.bdate_range("2024-01-02", periods=12).astype(str).tolist()})
+    )
+    frame.loc[1, TARGET_COLUMN] = float("nan")
+    frame.loc[2, EXCESS_TARGET_COLUMN] = float("nan")
+
+    old_result = prepare_supervised_data(frame, target_column=TARGET_COLUMN)
+    excess_result = prepare_supervised_data(
+        frame, target_column=EXCESS_TARGET_COLUMN
+    )
+
+    assert pd.Timestamp("2024-01-03") not in set(old_result["date"])
+    assert pd.Timestamp("2024-01-04") in set(old_result["date"])
+    assert pd.Timestamp("2024-01-03") in set(excess_result["date"])
+    assert pd.Timestamp("2024-01-04") not in set(excess_result["date"])
+
+
+def test_target_end_date_and_identifiers_are_unchanged_by_target_choice():
+    frame = _with_excess_target(_processed_rows({"AAA": _boundary_dates()}))
+    old_result = prepare_supervised_data(frame, target_column=TARGET_COLUMN)
+    excess_result = prepare_supervised_data(
+        frame, target_column=EXCESS_TARGET_COLUMN
+    )
+
+    pd.testing.assert_frame_equal(
+        old_result.drop(columns=[TARGET_COLUMN]),
+        excess_result.drop(columns=[EXCESS_TARGET_COLUMN]),
+    )
+
+
+def test_splitter_uses_selected_target_for_y_and_exact_feature_schema():
+    frame = _with_excess_target(_processed_rows({"AAA": _boundary_dates()}))
+    supervised = prepare_supervised_data(
+        frame, target_column=EXCESS_TARGET_COLUMN
+    )
+    split = _split(supervised)
+    source = frame.set_index(["date", "ticker"])
+
+    for partition in (split.train, split.validation, split.test):
+        assert list(partition.X.columns) == list(FEATURE_COLUMNS)
+        assert partition.y.name == EXCESS_TARGET_COLUMN
+        assert list(partition.metadata.columns) == ["date", "ticker"]
+        assert not set(partition.X.columns).intersection(
+            {TARGET_COLUMN, EXCESS_TARGET_COLUMN}
+        )
+        assert partition.X.index.equals(partition.y.index)
+        assert partition.X.index.equals(partition.metadata.index)
+        for index, row in partition.metadata.iterrows():
+            key = (row["date"], row["ticker"])
+            assert partition.y.loc[index] == source.loc[key, EXCESS_TARGET_COLUMN]
+
+
+def test_splitters_reject_both_approved_targets_or_no_approved_target():
+    supervised = _prepared_boundary_data()
+    both_targets = supervised.copy()
+    both_targets[EXCESS_TARGET_COLUMN] = both_targets[TARGET_COLUMN] + 0.25
+    no_target = supervised.drop(columns=[TARGET_COLUMN])
+
+    for frame in (both_targets, no_target):
+        with pytest.raises(ValueError, match="exactly one approved target"):
+            _split(frame)
+        with pytest.raises(ValueError, match="exactly one approved target"):
+            walk_forward_splits(frame, [2022])
 
 
 def test_duplicate_date_ticker_rows_are_rejected():
@@ -419,7 +533,8 @@ def test_partition_dataclasses_are_frozen():
         split.train.X = split.test.X
 
 
-def test_cross_ticker_purge_uses_each_tickers_own_observations():
+@pytest.mark.parametrize("target_column", [TARGET_COLUMN, EXCESS_TARGET_COLUMN])
+def test_cross_ticker_purge_uses_each_tickers_own_observations(target_column):
     ticker_dates = {
         "AAA": [
             "2021-12-20",
@@ -448,7 +563,10 @@ def test_cross_ticker_purge_uses_each_tickers_own_observations():
             *_boundary_dates()[14:],
         ],
     }
-    supervised = prepare_supervised_data(_processed_rows(ticker_dates))
+    processed = _processed_rows(ticker_dates)
+    if target_column == EXCESS_TARGET_COLUMN:
+        processed[EXCESS_TARGET_COLUMN] = processed[TARGET_COLUMN] + 0.25
+    supervised = prepare_supervised_data(processed, target_column=target_column)
     horizons = supervised.set_index(["ticker", "date"])["target_end_date"]
     assert horizons.loc[("AAA", pd.Timestamp("2021-12-20"))] == pd.Timestamp(
         "2022-01-03"
