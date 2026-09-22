@@ -10,6 +10,7 @@ EXPECTED_FEATURES = [
     "volatility_20d", "distance_sma_10", "distance_sma_20",
     "distance_sma_50", "volume_change_1d", "volume_ratio_20",
 ]
+EXPECTED_EXCESS_TARGET = "future_excess_return_5d"
 
 
 def _engineering():
@@ -49,8 +50,9 @@ def test_input_is_unchanged_and_output_contract_is_exact():
     pd.testing.assert_frame_equal(prices, before)
     assert list(module.FEATURE_COLUMNS) == EXPECTED_FEATURES
     assert module.TARGET_COLUMN == "future_return_5d"
+    assert module.EXCESS_TARGET_COLUMN == EXPECTED_EXCESS_TARGET
     assert result.columns.tolist() == ["date", "ticker", *EXPECTED_FEATURES,
-                                       "future_return_5d"]
+                                       "future_return_5d", EXPECTED_EXCESS_TARGET]
     assert result.index.equals(pd.RangeIndex(65))
     assert len(result) == len(prices)
 
@@ -170,3 +172,119 @@ def test_cross_ticker_windows_and_targets_restart_independently():
         assert pd.isna(actual.loc[0, "volume_change_1d"])
         assert actual["distance_sma_50"].iloc[:49].isna().all()
         assert actual["future_return_5d"].tail(5).isna().all()
+
+
+def _exact_window_prices(stock_dates, stock_prices, spy_dates, spy_prices):
+    stock = pd.DataFrame({
+        "date": pd.to_datetime(stock_dates),
+        "ticker": "AAPL",
+        "adjusted_close": stock_prices,
+        "volume": [100] * len(stock_dates),
+    })
+    spy = pd.DataFrame({
+        "date": pd.to_datetime(spy_dates),
+        "ticker": "SPY",
+        "adjusted_close": spy_prices,
+        "volume": [200] * len(spy_dates),
+    })
+    return pd.concat([stock, spy], ignore_index=True)
+
+
+def test_excess_uses_stock_fifth_future_date_and_exact_spy_window():
+    prices = _exact_window_prices(
+        ["2020-01-01", "2020-01-02", "2020-01-03", "2020-01-06",
+         "2020-01-07", "2020-01-08", "2020-01-09"],
+        [100, 101, 102, 103, 104, 105, 106],
+        ["2020-01-01", "2020-01-02", "2020-01-03", "2020-01-06",
+         "2020-01-07", "2020-01-08", "2020-01-09"],
+        [200, 202, 204, 206, 208, 210, 220],
+    )
+    result = _engineering().build_features(prices)
+    row = result[(result.ticker == "AAPL") & (result.date == "2020-01-01")].iloc[0]
+    expected_stock = 105 / 100 - 1
+    expected_spy = 210 / 200 - 1
+    assert row.future_return_5d == pytest.approx(expected_stock)
+    assert row.future_excess_return_5d == pytest.approx(expected_stock - expected_spy)
+
+
+def test_excess_is_zero_with_complete_spy_horizon_and_final_five_are_nan():
+    dates = pd.bdate_range("2020-01-01", periods=12)
+    prices = _exact_window_prices(
+        dates,
+        [100 + i for i in range(12)],
+        dates,
+        [200 + 2 * i for i in range(12)],
+    )
+    result = _engineering().build_features(prices)
+    aapl = result[result.ticker == "AAPL"]
+    assert aapl.future_excess_return_5d.iloc[:7].notna().all()
+    assert aapl.future_excess_return_5d.iloc[:7].map(math.isfinite).all()
+    assert aapl.future_excess_return_5d.iloc[0] == pytest.approx(
+        (105 / 100 - 1) - (210 / 200 - 1)
+    )
+    spy = result[result.ticker == "SPY"]
+    assert spy.future_excess_return_5d.iloc[:7].abs().max() == pytest.approx(0)
+    for ticker in ["AAPL", "SPY"]:
+        ticker_result = result[result.ticker == ticker]
+        assert ticker_result.future_return_5d.tail(5).isna().all()
+        assert ticker_result.future_excess_return_5d.tail(5).isna().all()
+
+
+@pytest.mark.parametrize("missing_side", ["start", "end"])
+def test_missing_exact_spy_endpoint_makes_only_excess_nan(missing_side):
+    dates = pd.bdate_range("2020-01-01", periods=7)
+    spy_dates = dates.delete(0 if missing_side == "start" else 5)
+    prices = _exact_window_prices(
+        dates,
+        [100 + i for i in range(7)],
+        spy_dates,
+        [200 + 2 * i for i in range(6)],
+    )
+    result = _engineering().build_features(prices)
+    row = result[(result.ticker == "AAPL") & (result.date == dates[0])].iloc[0]
+    assert pd.notna(row.future_return_5d)
+    assert pd.isna(row.future_excess_return_5d)
+
+
+def test_missing_spy_values_are_not_forward_or_backward_filled():
+    dates = pd.bdate_range("2020-01-01", periods=8)
+    spy_dates = dates.delete(5)
+    prices = _exact_window_prices(
+        dates,
+        [100 + i for i in range(8)],
+        spy_dates,
+        [200 + 2 * i for i in range(7)],
+    )
+    result = _engineering().build_features(prices)
+    aapl = result[result.ticker == "AAPL"].reset_index(drop=True)
+    assert pd.isna(aapl.loc[0, "future_excess_return_5d"])
+    assert pd.notna(aapl.loc[1, "future_excess_return_5d"])
+
+
+def test_spy_independent_fifth_observation_is_not_substituted():
+    stock_dates = pd.bdate_range("2020-01-01", periods=7)
+    spy_dates = stock_dates.delete(5).append(pd.DatetimeIndex(["2020-01-15"]))
+    prices = _exact_window_prices(
+        stock_dates,
+        [100 + i for i in range(7)],
+        spy_dates,
+        [200 + 2 * i for i in range(7)],
+    )
+    result = _engineering().build_features(prices)
+    row = result[(result.ticker == "AAPL") & (result.date == stock_dates[0])].iloc[0]
+    assert pd.isna(row.future_excess_return_5d)
+
+
+def test_excess_keeps_input_immutable_and_feature_columns_unchanged():
+    prices = _exact_window_prices(
+        pd.bdate_range("2020-01-01", periods=8),
+        [100 + i for i in range(8)],
+        pd.bdate_range("2020-01-01", periods=8),
+        [200 + i for i in range(8)],
+    )
+    before = prices.copy(deep=True)
+    result = _engineering().build_features(prices)
+    pd.testing.assert_frame_equal(prices, before)
+    assert list(_engineering().FEATURE_COLUMNS) == EXPECTED_FEATURES
+    non_null = result[EXPECTED_EXCESS_TARGET].dropna()
+    assert non_null.map(math.isfinite).all()
