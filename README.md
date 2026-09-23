@@ -1,5 +1,7 @@
 # AI Stock Forecaster
 
+[![CI](https://github.com/albertopernas-dev/ai-stock-forecaster/actions/workflows/ci.yml/badge.svg)](https://github.com/albertopernas-dev/ai-stock-forecaster/actions/workflows/ci.yml)
+
 AI Stock Forecaster is an end-to-end machine learning project intended to
 forecast five-day stock returns, use those forecasts for portfolio
 optimization, backtest the resulting strategy, and expose predictions through
