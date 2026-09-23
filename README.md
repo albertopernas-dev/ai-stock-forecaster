@@ -161,6 +161,31 @@ return. TEST remains 2024+ and the ranking module rejects any row dated on or
 after 2024-01-01. Controlled evaluation remains pending; numerical results are
 deferred to the real run.
 
+Ordering ability is not the same as a tradable edge. The backtest layer answers
+the remaining question: what per-unit trading cost would reduce that edge to
+exactly zero. Rather than assuming a cost level, which would let the assumption
+decide the conclusion, it reports the break-even cost in basis points as
+`10000 * mean gross return / mean traded notional`. A non-positive value means
+the edge is absent before any cost is applied.
+
+Two fixed equal-weight strategies are simulated. The long/short book is
+dollar-neutral: the five highest-ranked stocks at `+1/5` each and the five
+lowest-ranked at `-1/5`, so its gross return is the tercile spread. The
+long-only book holds the five highest-ranked and is measured against the
+equal-weight universe. Rebalancing is weekly and non-overlapping, one date in
+every five, which matches the five-session horizon so every position is held
+for exactly its own target window. Daily rebalancing is deliberately excluded
+because it trades strictly more and is therefore strictly worse on cost.
+
+Traded notional is the sum of absolute weight changes between consecutive
+rebalances, sequenced continuously across years, so the first rebalance carries
+the real cost of establishing the book. Periods where predictions do not vary
+across stocks are undefined rather than zero, and carry the previous book
+forward. Short borrow cost and market impact are not modeled, so the reported
+break-even is optimistic. TEST remains 2024+ and the module rejects any row
+dated on or after 2024-01-01. Controlled evaluation remains pending; numerical
+results are deferred to the real run.
+
 The first run downloads the configured history. Later runs start from the
 oldest next-required date across requested tickers, merge corrected or new
 rows, validate the result, and update Parquet storage. Numeric missing values
