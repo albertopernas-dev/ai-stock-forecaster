@@ -52,19 +52,17 @@ $env:PYTHONPATH = '<ruta-del-worktree>\src'
 ```
 
 **Caché de pytest heredada:** `.pytest_cache/` fue creada por otra cuenta de Windows
-(`LenovoAlberto\CodexSandboxOffline`) y es ilegible para el usuario actual, mientras
-`pyproject.toml` fija `--basetemp=.pytest_cache/tmp`. Sin hacer nada, **23 tests fallan en
-setup con WinError 5** por un motivo ajeno al código. Hasta que se arregle con permisos de
-administrador, ejecutar pytest redirigiendo esa carpeta:
-
-```powershell
-python -m pytest -v --basetemp=<carpeta-temporal-escribible>
-```
+(`LenovoAlberto\CodexSandboxOffline`) y es ilegible para el usuario actual. Ya no afecta a
+los tests: `pyproject.toml` fijaba `--basetemp=.pytest_cache/tmp`, lo que hacía fallar 23
+tests en setup tanto aquí como en cualquier clon recién hecho; ese pin se eliminó y pytest
+usa ahora el directorio temporal del sistema. Solo queda un aviso cosmético
+(`PytestCacheWarning: could not create cache path`) que no altera ningún resultado.
+Ejecutar pytest sin argumentos adicionales.
 
 ## Verificación de un paso
 
 ```powershell
-python -m pytest -v --basetemp=<temporal>   # suite completa, 0 fallos y 0 errores
+python -m pytest -v                         # suite completa, 0 fallos y 0 errores
 python -m ruff check .                      # linter limpio
 git status --short                          # vacío
 git diff --exit-code                        # sin cambios sin indexar

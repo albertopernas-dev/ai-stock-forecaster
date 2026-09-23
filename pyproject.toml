@@ -28,7 +28,6 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 addopts = [
-    "--basetemp=.pytest_cache/tmp",
     "--strict-markers",
     "-ra",
 ]
