@@ -37,7 +37,12 @@ def _model_sort_key(model_name: str) -> int:
     return len(KNOWN_MODEL_ORDER)
 
 
-def _validate(predictions: pd.DataFrame, strategy: str, step: int) -> pd.DataFrame:
+def _validate(
+    predictions: pd.DataFrame,
+    strategy: str,
+    step: int,
+    allow_holdout: bool = False,
+) -> pd.DataFrame:
     if strategy not in STRATEGIES:
         allowed = ", ".join(STRATEGIES)
         raise ValueError(
@@ -52,10 +57,11 @@ def _validate(predictions: pd.DataFrame, strategy: str, step: int) -> pd.DataFra
     ordered["date"] = pd.to_datetime(ordered["date"])
     if ordered.duplicated(subset=["date", "ticker", "model"]).any():
         raise ValueError("Duplicate date, ticker and model rows")
-    if ordered["date"].ge(TEST_BOUNDARY).any():
+    if not allow_holdout and ordered["date"].ge(TEST_BOUNDARY).any():
         raise ValueError(
             "predictions must not contain rows dated 2024-01-01 or later; "
-            "TEST is never evaluated"
+            "pass allow_holdout=True only for the one pre-registered "
+            "confirmation"
         )
     return ordered
 
@@ -96,9 +102,10 @@ def build_period_returns(
     predictions: pd.DataFrame,
     strategy: str = LONG_SHORT,
     step: int = REBALANCE_STEP,
+    allow_holdout: bool = False,
 ) -> pd.DataFrame:
     """Return one gross return and traded notional per model and rebalance."""
-    ordered = _validate(predictions, strategy, step)
+    ordered = _validate(predictions, strategy, step, allow_holdout=allow_holdout)
     rebalances = select_non_overlapping(ordered, step=step)
 
     rows: list[dict[str, object]] = []
