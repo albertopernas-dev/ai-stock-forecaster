@@ -125,6 +125,40 @@ from that official Step 5F set. The models produce in-memory out-of-sample
 predictions; pooled metrics are recomputed from their concatenated prediction
 rows rather than averaged across years. TEST remains 2024+ and untouched.
 
+Point-error metrics answer how close a predicted number is to the realized
+return. They do not answer whether a model orders stocks correctly on a given
+date, which is the property portfolio construction actually consumes. The
+ranking evaluation adds that lens over the same out-of-sample predictions.
+
+For each model and trading date it computes the Spearman rank correlation
+between predictions and realized returns across that date's tickers, and the
+spread between the mean realized return of the five highest-ranked and five
+lowest-ranked stocks. Both are undefined, and reported as null rather than
+zero, when a date has too few tickers or when predictions do not vary across
+stocks; ZeroBaseline and MeanBaseline are constant by construction and are
+therefore structurally undefined here. MomentumBaseline varies across stocks
+and serves as the naive ordering reference.
+
+The two targets are rank-identical within a date. All 15 stocks share a trading
+calendar, so on any date every stock's benchmark window is the same and the
+excess target equals the absolute target minus one constant. Subtracting a
+constant preserves order and shifts both bucket means equally, so the
+information coefficient and the tercile spread are invariant to the choice
+between the two targets. This was verified across all 4,193 dates: the
+within-date range of the difference between the targets is exactly zero. The
+excess target can therefore change a ranking result only through its effect on
+model fitting, never through the evaluation itself.
+
+Because the horizon is five sessions while observations are daily, consecutive
+dates share most of their target window and overlapping statistics overstate
+consistency. Every summary is therefore reported twice: over all dates, and
+over a non-overlapping subsample taking every fifth trading date within each
+validation year. The spread is a raw difference of realized returns: it applies
+no transaction cost, position sizing, or compounding and is never a strategy
+return. TEST remains 2024+ and the ranking module rejects any row dated on or
+after 2024-01-01. Controlled evaluation remains pending; numerical results are
+deferred to the real run.
+
 The first run downloads the configured history. Later runs start from the
 oldest next-required date across requested tickers, merge corrected or new
 rows, validate the result, and update Parquet storage. Numeric missing values
