@@ -474,3 +474,49 @@ def test_summarize_ranking_does_not_mutate_its_input():
     summarize_ranking(daily, by_year=True)
 
     pd.testing.assert_frame_equal(daily, original)
+
+
+def _holdout_frame():
+    return _predictions(
+        "2024-03-01",
+        "LinearRegression",
+        ["A", "B", "C", "D", "E"],
+        [0.05, 0.04, 0.03, 0.02, 0.01],
+        [0.9, 0.7, 0.5, 0.3, 0.1],
+        year=2024,
+    )
+
+
+def test_holdout_rows_are_admitted_only_by_the_explicit_opt_in():
+    daily = build_daily_ranking(_holdout_frame(), allow_holdout=True)
+
+    assert len(daily) == 1
+    assert daily.loc[0, "validation_year"] == 2024
+    assert daily.loc[0, "ic"] == pytest.approx(1.0)
+
+
+def test_the_opt_in_defaults_to_refusing_the_holdout():
+    import inspect
+
+    parameters = inspect.signature(build_daily_ranking).parameters
+    assert parameters["allow_holdout"].default is False
+
+
+def test_explicitly_disallowing_the_holdout_still_rejects_it():
+    with pytest.raises(ValueError, match="2024"):
+        build_daily_ranking(_holdout_frame(), allow_holdout=False)
+
+
+def test_development_rows_are_unaffected_by_the_opt_in():
+    frame = _predictions(
+        "2016-03-01",
+        "LinearRegression",
+        ["A", "B", "C", "D", "E"],
+        [0.05, 0.04, 0.03, 0.02, 0.01],
+        [0.9, 0.7, 0.5, 0.3, 0.1],
+    )
+
+    pd.testing.assert_frame_equal(
+        build_daily_ranking(frame),
+        build_daily_ranking(frame, allow_holdout=True),
+    )

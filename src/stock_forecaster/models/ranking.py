@@ -27,7 +27,10 @@ def _require_columns(frame: pd.DataFrame, required: tuple[str, ...]) -> None:
         raise ValueError(f"Missing required columns: {', '.join(missing_columns)}")
 
 
-def _validate_predictions(predictions: pd.DataFrame) -> pd.DataFrame:
+def _validate_predictions(
+    predictions: pd.DataFrame,
+    allow_holdout: bool = False,
+) -> pd.DataFrame:
     if not isinstance(predictions, pd.DataFrame) or predictions.empty:
         raise ValueError("predictions must be a non-empty DataFrame")
     _require_columns(predictions, PREDICTION_COLUMNS)
@@ -35,10 +38,11 @@ def _validate_predictions(predictions: pd.DataFrame) -> pd.DataFrame:
     ordered["date"] = pd.to_datetime(ordered["date"])
     if ordered.duplicated(subset=["date", "ticker", "model"]).any():
         raise ValueError("Duplicate date, ticker and model rows")
-    if ordered["date"].ge(TEST_BOUNDARY).any():
+    if not allow_holdout and ordered["date"].ge(TEST_BOUNDARY).any():
         raise ValueError(
             "predictions must not contain rows dated 2024-01-01 or later; "
-            "TEST is never evaluated"
+            "pass allow_holdout=True only for the one pre-registered "
+            "confirmation"
         )
     return ordered
 
@@ -91,9 +95,12 @@ def _daily_row(
     }
 
 
-def build_daily_ranking(predictions: pd.DataFrame) -> pd.DataFrame:
+def build_daily_ranking(
+    predictions: pd.DataFrame,
+    allow_holdout: bool = False,
+) -> pd.DataFrame:
     """Return one cross-sectional ranking row per model and trading date."""
-    ordered = _validate_predictions(predictions)
+    ordered = _validate_predictions(predictions, allow_holdout=allow_holdout)
     rows = [
         _daily_row(model, year, date, group)
         for (model, year, date), group in ordered.groupby(

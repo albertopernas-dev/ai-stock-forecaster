@@ -186,6 +186,19 @@ break-even is optimistic. TEST remains 2024+ and the module rejects any row
 dated on or after 2024-01-01. Controlled evaluation remains pending; numerical
 results are deferred to the real run.
 
+The 2024+ hold-out was never read during development. Both evaluation modules
+reject any row dated on or after 2024-01-01 and keep doing so by default; an
+explicit `allow_holdout=True` at the call site is the only way to admit it, so
+spending the hold-out is a visible, deliberate act rather than a silent default.
+
+The confirmation was pre-registered before any hold-out value existed, in
+`docs/superpowers/specs/2026-09-23-holdout-confirmation-design.md`. It fixes one
+target, one strategy, two candidate models against a naive control, one primary
+metric, and the comparison against the already published development figures. It
+also fixes in advance that an ambiguous outcome is reported as inconclusive
+rather than rescued by a favorable secondary statistic, and that the evaluation
+runs exactly once with no refitting, reselection or repetition afterwards.
+
 The first run downloads the configured history. Later runs start from the
 oldest next-required date across requested tickers, merge corrected or new
 rows, validate the result, and update Parquet storage. Numeric missing values

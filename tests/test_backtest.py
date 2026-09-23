@@ -425,3 +425,36 @@ def test_summarize_backtest_does_not_mutate_its_input():
 def test_summarize_backtest_rejects_empty_input():
     with pytest.raises(ValueError, match="non-empty"):
         summarize_backtest(pd.DataFrame())
+
+
+def _holdout_ten():
+    return _ten("2024-03-01", [0.01] * 10, DESCENDING, year=2024)
+
+
+def test_holdout_rows_are_admitted_only_by_the_explicit_opt_in():
+    periods = build_period_returns(_holdout_ten(), allow_holdout=True)
+
+    assert len(periods) == 1
+    assert periods.loc[0, "validation_year"] == 2024
+    assert periods.loc[0, "traded_notional"] == pytest.approx(2.0)
+
+
+def test_the_backtest_opt_in_defaults_to_refusing_the_holdout():
+    import inspect
+
+    parameters = inspect.signature(build_period_returns).parameters
+    assert parameters["allow_holdout"].default is False
+
+
+def test_backtest_explicitly_disallowing_the_holdout_still_rejects_it():
+    with pytest.raises(ValueError, match="2024"):
+        build_period_returns(_holdout_ten(), allow_holdout=False)
+
+
+def test_development_periods_are_unaffected_by_the_opt_in():
+    frame = _ten("2016-01-04", [0.01] * 10, DESCENDING)
+
+    pd.testing.assert_frame_equal(
+        build_period_returns(frame),
+        build_period_returns(frame, allow_holdout=True),
+    )
